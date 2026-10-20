@@ -5,7 +5,7 @@ import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
   // তোমার আগের configuration থাকবে
-  databaseURL: "এখানে-তোমার-আসল-Database-URL",
+  databaseURL: "https://gen-lang-client-0048418625-default-rtdb.asia-southeast1.firebasedatabase.app",
 };
 
 // Initialize Firebase safely preventing duplicate instances
