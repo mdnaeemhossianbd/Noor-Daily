@@ -4,6 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/providers/locale_provider.dart';
 import '../../core/providers/content_provider.dart';
+import '../../core/providers/prayer_provider.dart';
+import 'package:intl/intl.dart';
+import '../prayer_times/widgets/notification_settings_sheet.dart';
 import '../../core/theme/islamic_theme.dart';
 import '../../core/models/post_model.dart';
 import '../posts/post_detail_screen.dart';
@@ -17,6 +20,7 @@ class HomeScreen extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final localeProvider = context.watch<LocaleProvider>();
     final contentProvider = context.watch<ContentProvider>();
+    final prayerProvider = context.watch<PrayerProvider>();
     final langCode = localeProvider.locale.languageCode;
 
     return Scaffold(
@@ -49,6 +53,10 @@ class HomeScreen extends StatelessWidget {
             : ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 children: [
+                  // Prayer Times Summary Card
+                  _buildPrayerSummaryCard(context, prayerProvider),
+                  const SizedBox(height: 20),
+
                   // Daily Inspiration Banner Card
                   _buildDailyAyatCard(context, contentProvider.dailyAyatPost, langCode, l10n),
                   const SizedBox(height: 20),
@@ -85,6 +93,159 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+
+  Widget _buildPrayerSummaryCard(
+    BuildContext context,
+    PrayerProvider provider,
+  ) {
+    final times = provider.prayerTimes;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.access_time,
+                    color: IslamicTheme.primaryEmerald),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Prayer Times',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Notification settings',
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => const NotificationSettingsSheet(),
+                    );
+                  },
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    provider.locationName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    final ok = await provider.requestGpsLocation();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ok
+                              ? 'GPS location updated'
+                              : 'GPS failed. Check location permission and GPS.',
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Use GPS'),
+                ),
+              ],
+            ),
+            const Divider(),
+            if (times == null)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else ...[
+              Builder(
+                builder: (context) {
+                  final next = times.getNextPrayerInfo();
+                  final name = next['name'] as String;
+                  final remaining = next['remaining'] as Duration;
+                  final countdown =
+                      '${remaining.inHours.toString().padLeft(2, '0')}:'
+                      '${(remaining.inMinutes % 60).toString().padLeft(2, '0')}';
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: IslamicTheme.primaryEmerald.withValues(alpha: 0.09),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Next prayer: $name',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            )),
+                        const SizedBox(height: 4),
+                        Text('Time remaining: $countdown'),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              _homePrayerRow('Fajr', times.fajr),
+              _homePrayerRow('Sunrise', times.sunrise),
+              _homePrayerRow('Dhuhr', times.dhuhr),
+              _homePrayerRow('Asr', times.asr),
+              _homePrayerRow('Maghrib', times.maghrib),
+              _homePrayerRow('Isha', times.isha),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  // Prayer Times is the third item in the bottom menu.
+                  // Switch to that screen using the bottom navigation.
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Open Prayer Times from the bottom navigation for full settings.',
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Prayer settings are in Prayer Times'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _homePrayerRow(String name, DateTime time) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(name),
+          Text(
+            DateFormat('hh:mm a').format(time),
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildDailyAyatCard(
     BuildContext context,
     PostModel? post,
@@ -120,7 +281,7 @@ class HomeScreen extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: IslamicTheme.accentGold.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.pad(const BorderSide(color: IslamicTheme.accentGold, width: 0.5)),
+                  border: Border.all(color: IslamicTheme.accentGold, width: 0.5),
                 ),
                 child: Text(
                   l10n.translate('daily_ayat_title'),
@@ -145,7 +306,6 @@ class HomeScreen extends StatelessWidget {
               fontWeight: FontWeight.bold,
               height: 1.4,
             ),
-            textDirection: langCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
           ),
           const SizedBox(height: 8),
           Text(
@@ -233,7 +393,6 @@ class HomeScreen extends StatelessWidget {
                       ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      textDirection: langCode == 'ar' ? TextDirection.rtl : TextDirection.ltr,
                     ),
                     const SizedBox(height: 4),
                     Text(

@@ -11,7 +11,7 @@ class AdMobService {
 
   // Official Google AdMob Test Ad Unit IDs
   static const String testBannerId = 'ca-app-pub-3940256099942544/6300978111';
-  static const String testInterstitialId = 'ca-app-pub-3940256099942544/1033173712';
+  static const String testInterstitialId = 'ca-app-pub-6596350151078116/9629838690';
 
   InterstitialAd? _interstitialAd;
   bool _isInterstitialLoading = false;

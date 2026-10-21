@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../core/localization/app_localizations.dart';
 import '../features/prayer_times/prayer_times_screen.dart';
+import '../features/home/home_screen.dart';
+import '../features/categories/categories_screen.dart';
+import '../features/saved/saved_posts_screen.dart';
+import '../features/settings/settings_screen.dart';
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
