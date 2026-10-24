@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
+import {
+  signInWithEmailAndPassword,
   signInWithPopup,
   GoogleAuthProvider,
-  signOut, 
+  signOut,
   onAuthStateChanged
 } from 'firebase/auth';
 import { auth } from '../api/firebase';
@@ -21,16 +20,11 @@ interface AuthContextType {
   isAdmin: boolean;
   loading: boolean;
   login: (email: string, pass: string) => Promise<void>;
-  registerAdmin: (email: string, pass: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   authError: string | null;
 }
 
-const LOCAL_STORAGE_KEY = 'noor_daily_admin_auth';
-
-// Strict Admin Access Control:
-// Only authorized administrator emails are permitted. All unauthorized Gmail accounts are rejected!
 export const AUTHORIZED_ADMIN_EMAILS = [
   'habitsk50@gmail.com',
   'admin@noordaily.com'
@@ -38,247 +32,110 @@ export const AUTHORIZED_ADMIN_EMAILS = [
 
 export function isEmailAuthorized(email: string | null | undefined): boolean {
   if (!email) return false;
-  const lower = email.trim().toLowerCase();
-  return (
-    AUTHORIZED_ADMIN_EMAILS.includes(lower) ||
-    lower.endsWith('@noordaily.com')
-  );
+  return AUTHORIZED_ADMIN_EMAILS.includes(email.trim().toLowerCase());
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Read session synchronously from localStorage so page refresh NEVER logs the user out!
-  const [currentUser, setCurrentUser] = useState<AdminUser | null>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && isEmailAuthorized(parsed.email)) {
-          return parsed;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not read cached auth session:', e);
-    }
-    return null;
-  });
-
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return Boolean(parsed && isEmailAuthorized(parsed.email));
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  });
-
-  // If we already have a verified user session in localStorage, loading is false right away!
-  const [loading, setLoading] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && isEmailAuthorized(parsed.email)) {
-          return false;
-        }
-      }
-    } catch {}
-    return true;
-  });
-
+  const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Firebase Authentication is the only source of truth for the admin session.
+  // Never restore admin access from editable browser localStorage.
   useEffect(() => {
-    let isMounted = true;
-
-    // Safety timeout to ensure loading never stays true
-    const timer = setTimeout(() => {
-      if (isMounted) setLoading(false);
-    }, 500);
-
-    let unsubscribe = () => {};
-    try {
-      unsubscribe = onAuthStateChanged(auth, async (user) => {
-        if (!isMounted) return;
-
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && isEmailAuthorized(user.email)) {
+        setCurrentUser({
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || 'Administrator',
+          isLocalSession: false
+        });
+        setIsAdmin(true);
+        setAuthError(null);
+      } else {
         if (user) {
-          // Check if this Google / Email user is authorized
-          if (!isEmailAuthorized(user.email)) {
-            console.warn('Unauthorized user blocked:', user.email);
-            try {
-              await signOut(auth);
-            } catch (_) {}
-            setCurrentUser(null);
-            setIsAdmin(false);
-            localStorage.removeItem(LOCAL_STORAGE_KEY);
-            setAuthError(`অননুমোদিত প্রবেশাধিকার: (${user.email}) এই অ্যাকাউন্টটি অনুমোদিত নয়। শুধুমাত্র অ্যাডমিন (habitsk50@gmail.com) লগইন করতে পারবেন।`);
-            setLoading(false);
-            return;
-          }
-
-          const adminUser: AdminUser = {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || 'Administrator',
-            isLocalSession: false
-          };
-
-          setIsAdmin(true);
-          setCurrentUser(adminUser);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminUser));
-          setAuthError(null);
-        } else {
-          // If Firebase reports null on fresh page reload, preserve existing valid localStorage session
-          const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-          if (saved) {
-            try {
-              const parsed = JSON.parse(saved);
-              if (parsed && isEmailAuthorized(parsed.email)) {
-                setCurrentUser(parsed);
-                setIsAdmin(true);
-              } else {
-                setCurrentUser(null);
-                setIsAdmin(false);
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
-              }
-            } catch {
-              setCurrentUser(null);
-              setIsAdmin(false);
-            }
-          }
+          void signOut(auth).catch((error) => {
+            console.error('Could not sign out unauthorized user:', error);
+          });
+          setAuthError(`অননুমোদিত প্রবেশাধিকার: (${user.email}) এই অ্যাকাউন্টটি অনুমোদিত নয়।`);
         }
-        setLoading(false);
-      });
-    } catch (e) {
-      console.warn('Firebase onAuthStateChanged error:', e);
+        setCurrentUser(null);
+        setIsAdmin(false);
+      }
       setLoading(false);
-    }
+    }, (error) => {
+      console.error('Firebase auth state error:', error);
+      setCurrentUser(null);
+      setIsAdmin(false);
+      setAuthError('লগইন যাচাই করা যায়নি। আবার চেষ্টা করুন।');
+      setLoading(false);
+    });
 
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-      unsubscribe();
-    };
+    return unsubscribe;
   }, []);
 
-  // Email/Password Sign-In
   const login = async (email: string, pass: string) => {
     setAuthError(null);
     if (!isEmailAuthorized(email)) {
-      const msg = `অননুমোদিত ইমেইল: (${email}) এই অ্যাকাউন্টটি অ্যাডমিন প্যানেলে অনুমোদিত নয়। শুধুমাত্র habitsk50@gmail.com অনুমোদিত।`;
-      setAuthError(msg);
-      throw new Error(msg);
+      const message = 'এই ইমেইলটি Admin হিসেবে অনুমোদিত নয়।';
+      setAuthError(message);
+      throw new Error(message);
     }
 
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, pass);
-      const adminUser: AdminUser = {
-        uid: cred.user.uid,
-        email: cred.user.email,
-        displayName: cred.user.displayName || 'Administrator',
-        isLocalSession: false
-      };
-      setCurrentUser(adminUser);
-      setIsAdmin(true);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminUser));
-    } catch (err: any) {
-      console.error('Login error in AuthContext:', err);
-      setAuthError(err.message || 'Authentication failed');
-      throw err;
+      await signInWithEmailAndPassword(auth, email.trim(), pass);
+    } catch (error: any) {
+      console.error('Login error:', error);
+      setAuthError(error.message || 'Authentication failed');
+      throw error;
     }
   };
 
-  // Register New Admin Account
-  const registerAdmin = async (email: string, pass: string) => {
-    setAuthError(null);
-    if (!isEmailAuthorized(email)) {
-      const msg = `অননুমোদিত ইমেইল: শুধুমাত্র অনুমোদিত অ্যাডমিন ইমেইল (habitsk50@gmail.com) দিয়ে অ্যাকাউন্ট খোলা যাবে।`;
-      setAuthError(msg);
-      throw new Error(msg);
-    }
-
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      const adminUser: AdminUser = {
-        uid: cred.user.uid,
-        email: cred.user.email,
-        displayName: 'Administrator',
-        isLocalSession: false
-      };
-      setCurrentUser(adminUser);
-      setIsAdmin(true);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminUser));
-    } catch (err: any) {
-      console.error('Registration error in AuthContext:', err);
-      setAuthError(err.message || 'Registration failed');
-      throw err;
-    }
-  };
-
-  // Google Sign-In with strict unauthorized Gmail rejection!
   const loginWithGoogle = async () => {
     setAuthError(null);
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const cred = await signInWithPopup(auth, provider);
-      
-      const userEmail = cred.user.email?.toLowerCase();
-      // Strict Check: ONLY habitsk50@gmail.com or @noordaily.com allowed!
-      if (!isEmailAuthorized(userEmail)) {
-        await signOut(auth);
-        setCurrentUser(null);
-        setIsAdmin(false);
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-        const errorMsg = `অননুমোদিত প্রবেশাধিকার: (${cred.user.email}) এই জিমেইল অ্যাকাউন্টটি অ্যাডমিন হিসেবে অনুমোদিত নয়। শুধুমাত্র অনুমোদিত অ্যাডমিন (habitsk50@gmail.com) প্রবেশ করতে পারবেন।`;
-        setAuthError(errorMsg);
-        throw new Error(errorMsg);
-      }
+      const credential = await signInWithPopup(auth, provider);
 
-      const adminUser: AdminUser = {
-        uid: cred.user.uid,
-        email: cred.user.email,
-        displayName: cred.user.displayName || 'Google Administrator',
-        isLocalSession: false
-      };
-      setCurrentUser(adminUser);
-      setIsAdmin(true);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(adminUser));
-    } catch (err: any) {
-      console.error('Google Sign In error:', err);
-      setAuthError(err.message || 'Google Sign-In failed');
-      throw err;
+      if (!isEmailAuthorized(credential.user.email)) {
+        await signOut(auth);
+        const message = 'এই Google অ্যাকাউন্টটি Admin হিসেবে অনুমোদিত নয়।';
+        setAuthError(message);
+        throw new Error(message);
+      }
+    } catch (error: any) {
+      console.error('Google Sign-In error:', error);
+      setAuthError(error.message || 'Google Sign-In failed');
+      throw error;
     }
   };
 
-  // Sign Out
   const logout = async () => {
     try {
       await signOut(auth);
     } catch (error) {
-      console.warn('SignOut warning:', error);
+      console.error('Sign-out error:', error);
+      throw error;
     } finally {
       setCurrentUser(null);
       setIsAdmin(false);
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      currentUser, 
-      isAdmin, 
-      loading, 
-      login, 
-      registerAdmin, 
-      loginWithGoogle, 
-      logout, 
-      authError 
+    <AuthContext.Provider value={{
+      currentUser,
+      isAdmin,
+      loading,
+      login,
+      loginWithGoogle,
+      logout,
+      authError
     }}>
       {children}
     </AuthContext.Provider>
