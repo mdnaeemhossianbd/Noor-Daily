@@ -8,20 +8,16 @@ import {
   EyeOff, 
   ShieldCheck, 
   AlertCircle, 
-  UserPlus, 
   LogIn, 
   CheckCircle2,
   Compass
 } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { currentUser, isAdmin, login, registerAdmin, loginWithGoogle, authError } = useAuth();
+  const { currentUser, isAdmin, login, loginWithGoogle, authError } = useAuth();
   const navigate = useNavigate();
-
-  const [mode, setMode] = useState<'signin' | 'register'>('signin');
   const [email, setEmail] = useState('habitsk50@gmail.com');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -61,25 +57,9 @@ export const Login: React.FC = () => {
       return;
     }
 
-    if (mode === 'register') {
-      if (password.length < 6) {
-        setErrorMessage('Password must be at least 6 characters long.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMessage('Passwords do not match.');
-        return;
-      }
-    }
-
     setIsSubmitting(true);
     try {
-      if (mode === 'register') {
-        await registerAdmin(email.trim(), password);
-        setSuccessMessage('Admin account successfully created and logged in!');
-      } else {
-        await login(email.trim(), password);
-      }
+      await login(email.trim(), password);
       navigate('/dashboard', { replace: true });
     } catch (err: any) {
       console.error('Auth error in form:', err);
@@ -87,7 +67,7 @@ export const Login: React.FC = () => {
       const code = err.code || '';
 
       if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') {
-        userFriendlyMsg = 'Account not found or password incorrect. You can create an admin account using the "Create Admin" tab above or sign in with your Google account.';
+        userFriendlyMsg = 'Account not found or password incorrect. Please check your credentials or use your authorized Google account.';
       } else if (code === 'auth/email-already-in-use') {
         userFriendlyMsg = 'This email is already registered. Please sign in with your password.';
       } else if (code === 'auth/weak-password') {
@@ -126,35 +106,6 @@ export const Login: React.FC = () => {
           </p>
         </div>
 
-        {/* Mode Selector Tabs */}
-        <div className="grid grid-cols-2 gap-1 bg-slate-800/80 p-1 rounded-2xl mb-6 border border-slate-700/60 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => { setMode('signin'); setErrorMessage(null); }}
-            className={`py-2 px-1 rounded-xl transition flex items-center justify-center gap-1.5 ${
-              mode === 'signin' 
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30' 
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <LogIn className="w-3.5 h-3.5" />
-            <span>Sign In</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setMode('register'); setErrorMessage(null); }}
-            className={`py-2 px-1 rounded-xl transition flex items-center justify-center gap-1.5 ${
-              mode === 'register' 
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30' 
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>Create Admin</span>
-          </button>
-        </div>
-
         {/* Admin Restriction Banner */}
         <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-200 text-xs flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
@@ -180,7 +131,7 @@ export const Login: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-emerald-300/80 mb-1.5">
-              {mode === 'register' ? 'Authorized Admin Email' : 'Admin Email'}
+              Admin Email
             </label>
             <div className="relative">
               <Mail className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -219,24 +170,6 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          {mode === 'register' && (
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-emerald-300/80 mb-1.5">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  required
-                  className="w-full pl-11 pr-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 text-sm transition"
-                />
-              </div>
-            </div>
-          )}
 
           <button
             type="submit"
@@ -246,10 +179,10 @@ export const Login: React.FC = () => {
             {isSubmitting ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>{mode === 'register' ? 'অ্যাকাউন্ট তৈরি হচ্ছে...' : 'লগইন হচ্ছে...'}</span>
+                <span>লগইন হচ্ছে...</span>
               </>
             ) : (
-              <span>{mode === 'register' ? 'অ্যাডমিন অ্যাকাউন্ট তৈরি করুন' : 'অ্যাডমিন প্যানেলে লগইন করুন'}</span>
+              <span>অ্যাডমিন প্যানেলে লগইন করুন</span>
             )}
           </button>
         </form>
